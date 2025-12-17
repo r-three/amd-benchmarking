@@ -1,9 +1,9 @@
 {
     "16": {
     	"time_taken": 21.7902713899881,
-	"avg_time_taken": 0.0021790271398998812,
-	"total_prmopt_tok": 385369,
-	"total_output_tok": 160000
+		"avg_time_taken": 0.0021790271398998812,
+		"total_prmopt_tok": 385369,
+		"total_output_tok": 160000
     },
     "64": {
         "time_taken": 54.614633784000034,
