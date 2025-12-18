@@ -1,0 +1,26 @@
+{
+    "16": {
+        "time_taken": 35.01536384499923,
+        "avg_time_taken": 0.0035015363844999228,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 160000
+    },
+    "64": {
+        "time_taken": 96.46556289899945,
+        "avg_time_taken": 0.009646556289899945,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 639949
+    },
+    "256": {
+        "time_taken": 388.09397355800047,
+        "avg_time_taken": 0.038809397355800045,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 2555194
+    },
+    "1024": {
+        "time_taken": 1512.373619812999,
+        "avg_time_taken": 0.15123736198129992,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 9802435
+    }
+}
