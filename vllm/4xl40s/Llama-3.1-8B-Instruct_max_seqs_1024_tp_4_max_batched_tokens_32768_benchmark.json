@@ -1,0 +1,14 @@
+{
+    "256": {
+        "time_taken": 471.325954540167,
+        "avg_time_taken": 0.0471325954540167,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 2556079
+    },
+    "1024": {
+        "time_taken": 2077.744287900161,
+        "avg_time_taken": 0.2077744287900161,
+        "total_prompt_tok": 385369,
+        "total_output_tok": 9857647
+    }
+}
