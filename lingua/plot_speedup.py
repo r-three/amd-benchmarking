@@ -1,4 +1,4 @@
-"""Heatmaps of lingua throughput (wps) of one run relative to a reference run.
+"""Heatmaps of lingua throughput (wps at step 10) of one run relative to a reference run.
 
 Usage: python plot_speedup.py [cmp_dir] [ref_dir ...]
 Writes speedup_<cmp>_vs_<ref>.png per reference. One panel per model size:
@@ -8,7 +8,6 @@ check on it means the comparison run did complete there.
 """
 import json
 import re
-import statistics as st
 import sys
 from pathlib import Path
 
@@ -18,16 +17,17 @@ from matplotlib.colors import LogNorm
 
 cmp_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "8xmi350x-cs-amdnode3")
 refs = [Path(p) for p in (sys.argv[2:] or ["8xh100", "8xmi300x"])]
-WARMUP, LAST = 2, 10  # mean of steps 3-10, same window on both sides
+STEP = 10  # compare wps at this global step on both sides (early steps still warming up)
 BS, GAS = [1, 2, 4, 8], [1, 2, 4, 8]
 
 
 def wps(path):
     if not path.exists():
         return None
-    rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-    rows = rows[WARMUP:LAST]
-    return st.mean(r["speed/wps"] for r in rows) if rows else None
+    for l in path.read_text().splitlines():
+        if l.strip() and (r := json.loads(l))["global_step"] == STEP:
+            return r["speed/wps"]  # first occurrence, in case the file holds several runs
+    return None
 
 
 def plot(ref):
