@@ -1,8 +1,10 @@
-"""Plot lingua throughput (wps) of an AMD run relative to 8xh100, per config.
+"""Heatmaps of lingua throughput (wps) of one run relative to a reference run.
 
-Usage: python plot_speedup.py [amd_dir] [baseline_dir] [out.png]
-Ratio > 1 means the AMD node is faster than 8xh100. Configs missing from
-either side (e.g. OOM / empty metrics.jsonl on H100) are skipped.
+Usage: python plot_speedup.py [cmp_dir] [ref_dir ...]
+Writes speedup_<cmp>_vs_<ref>.png per reference. One panel per model size:
+x = sequences per GPU (bs), y = grad accumulation steps (gas), cell = cmp/ref
+wps (>1: cmp faster). White cell = reference has no data (e.g. OOM); a green
+check on it means the comparison run did complete there.
 """
 import json
 import re
@@ -11,11 +13,13 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import LogNorm
 
-amd = Path(sys.argv[1] if len(sys.argv) > 1 else "8xmi350x-cs-amdnode3")
-base = Path(sys.argv[2] if len(sys.argv) > 2 else "8xh100")
-out = sys.argv[3] if len(sys.argv) > 3 else "speedup_vs_8xh100.png"
-WARMUP, LAST = 2, 10  # average steps 3-10 (skip warmup); same window on both sides
+cmp_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "8xmi350x-cs-amdnode3")
+refs = [Path(p) for p in (sys.argv[2:] or ["8xh100", "8xmi300x"])]
+WARMUP, LAST = 2, 10  # mean of steps 3-10, same window on both sides
+BS, GAS = [1, 2, 4, 8], [1, 2, 4, 8]
 
 
 def wps(path):
@@ -26,26 +30,47 @@ def wps(path):
     return st.mean(r["speed/wps"] for r in rows) if rows else None
 
 
-ratios = {}  # size -> {(bs, gas): ratio}
-for d in sorted(amd.iterdir()):
-    m = re.fullmatch(r"llama_(\d+B)_bs(\d+)_gas(\d+)", d.name)
-    if not m:
-        continue
-    a, b = wps(d / "metrics.jsonl"), wps(base / d.name / "metrics.jsonl")
-    if a and b:
-        ratios.setdefault(m[1], {})[(int(m[2]), int(m[3]))] = a / b
+def plot(ref):
+    sizes = sorted({re.match(r"llama_(\d+B)", d.name)[1] for d in cmp_dir.iterdir()})
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.2 * len(sizes), 4.4), squeeze=False)
+    cmap = plt.get_cmap("RdBu").copy()
+    cmap.set_bad("white")
+    for ax, size in zip(axes[0], sizes):
+        grid = np.full((len(GAS), len(BS)), np.nan)
+        ok = np.zeros_like(grid, dtype=bool)
+        for i, g in enumerate(GAS):
+            for j, b in enumerate(BS):
+                name = f"llama_{size}_bs{b}_gas{g}"
+                a = wps(cmp_dir / name / "metrics.jsonl")
+                r = wps(ref / name / "metrics.jsonl")
+                if r and a:
+                    grid[i, j] = a / r
+                elif a:
+                    ok[i, j] = True  # ref missing/OOM, cmp ran
+        im = ax.imshow(np.ma.masked_invalid(grid), origin="lower", cmap=cmap,
+                       norm=LogNorm(0.25, 4.0))
+        for i in range(len(GAS)):
+            for j in range(len(BS)):
+                if ok[i, j]:
+                    ax.text(j, i, "✓", ha="center", va="center", color="green", fontsize=22, weight="bold")
+                elif not np.isnan(grid[i, j]):
+                    ax.text(j, i, f"{grid[i, j]:.2f}x", ha="center", va="center", fontsize=9)
+        ax.set_xticks(range(len(BS)), BS)
+        ax.set_yticks(range(len(GAS)), GAS)
+        ax.set_xlabel("sequences per GPU")
+        ax.set_ylabel("grad accumulation steps")
+        ax.set_title(f"llama {size}")
+        for k in range(len(BS) + 1):  # thin grid so white cells stay visible
+            ax.axvline(k - 0.5, color="lightgray", lw=0.5)
+            ax.axhline(k - 0.5, color="lightgray", lw=0.5)
+    fig.suptitle(f"{cmp_dir.name} wps relative to {ref.name}  (white+✓: ref has no data, cmp ran)")
+    cb = fig.colorbar(im, ax=axes[0].tolist(), shrink=0.8, label="wps ratio")
+    cb.set_ticks([0.25, 0.5, 1, 2, 4])
+    cb.set_ticklabels(["0.25x", "0.5x", "1x", "2x", "4x"])
+    out = f"speedup_{cmp_dir.name}_vs_{ref.name}.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print("wrote", out)
 
-fig, axes = plt.subplots(1, len(ratios), figsize=(6 * len(ratios), 4), squeeze=False)
-for ax, (size, r) in zip(axes[0], sorted(ratios.items())):
-    keys = sorted(r)
-    ax.bar(range(len(keys)), [r[k] for k in keys],
-           color=["tab:green" if r[k] >= 1 else "tab:red" for k in keys])
-    ax.axhline(1, color="k", lw=1)
-    ax.set_xticks(range(len(keys)))
-    ax.set_xticklabels([f"bs{b}\ngas{g}" for b, g in keys], fontsize=7)
-    ax.set_ylabel(f"wps vs {base.name} (x)")
-    ax.set_title(f"llama {size}: {amd.name}")
-fig.tight_layout()
-fig.savefig(out, dpi=150)
-for size, r in sorted(ratios.items()):
-    print(size, {f"bs{b}_gas{g}": round(v, 2) for (b, g), v in sorted(r.items())})
+
+for ref in refs:
+    plot(ref)
